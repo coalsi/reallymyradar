@@ -90,6 +90,9 @@ def run_tray(port: int, open_browser: bool):
     lan = f"http://{lan_ip()}:{port}"
     srv = ServerThread(port)
     srv.start()
+    from .keepawake import follow_setting
+    from .server import store
+    awake = follow_setting(lambda: store.settings.server.keep_awake)
 
     def state() -> tuple[str, str]:
         try:
@@ -115,6 +118,11 @@ def run_tray(port: int, open_browser: bool):
     def toggle_login(icon, item):
         autostart.disable() if autostart.is_enabled() else autostart.enable()
 
+    def toggle_awake(icon, item):
+        on = not store.settings.server.keep_awake
+        store.update({"server": {"keep_awake": on}})
+        awake.set(on)
+
     def open_folder(icon, item):
         opener = {"darwin": ["open"], "win32": ["explorer"]}.get(sys.platform, ["xdg-open"])
         subprocess.Popen([*opener, str(APP_HOME)])
@@ -133,6 +141,7 @@ def run_tray(port: int, open_browser: bool):
         pystray.MenuItem("API docs", open_url("/docs")),
         pystray.MenuItem("Copy network link", copy_link),
         pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Keep computer awake", toggle_awake, checked=lambda item: store.settings.server.keep_awake),
         pystray.MenuItem("Start at login", toggle_login, checked=lambda item: autostart.is_enabled()),
         pystray.MenuItem("Open data folder", open_folder),
         pystray.Menu.SEPARATOR,
@@ -197,7 +206,9 @@ def main():
           f"Pi: http://{lan_ip()}:{port}/pi   API: http://localhost:{port}/docs\n  data: {APP_HOME}\n")
     if args.headless:
         import uvicorn
-        from .server import app
+        from .keepawake import follow_setting
+        from .server import app, store as server_store
+        follow_setting(lambda: server_store.settings.server.keep_awake)
         uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
         return
     first_launch = not (APP_HOME / ".launched").exists()

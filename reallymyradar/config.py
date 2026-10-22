@@ -103,6 +103,7 @@ class ImageSettings(BaseModel):
 class ServerSettings(BaseModel):
     port: int = 8600
     access_token: str | None = Field(None, description="if set, requests arriving through a tunnel must carry ?token= (LAN is open)")
+    keep_awake: bool = Field(True, description="stop this computer idle-sleeping while the radar runs (display may still sleep)")
 
 
 class Settings(BaseModel):

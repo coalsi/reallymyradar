@@ -467,6 +467,7 @@ const FIELDS = [
   ]],
   ["Remote access", null, [
     ["server.access_token", "Token required through ngrok", "text", null, "LAN stays open. Through the tunnel add ?token=… once; a cookie remembers it."],
+    ["server.keep_awake", "Keep this computer awake while the radar runs", "check", null, "So kiosks and other devices never lose the radar. The display can still sleep."],
   ]],
 ];
 

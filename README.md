@@ -40,7 +40,10 @@ Then open `http://<that-machine>:8600`.
 
 The tray icon is the status light. Its blip is **green** when radar data is flowing, **amber** while radars
 download, and **red** on errors. Hover it for details. Its menu has: Open Radar · Settings · Kiosk view ·
-API docs · Copy network link · **Start at login** · Open data folder · Quit.
+API docs · Copy network link · **Keep computer awake** · **Start at login** · Open data folder · Quit.
+
+While it runs, the app keeps the computer from idle-sleeping so kiosks and other devices never lose the radar
+(the display can still sleep). It releases the moment the app quits. Toggle it in the tray menu or ⚙ → Remote access.
 
 Headless installs report the same thing at `GET /api/status`. The Docker image has a built-in health check.
 
