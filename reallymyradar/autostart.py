@@ -45,8 +45,14 @@ def enable() -> None:
     if sys.platform == "darwin":
         p = _mac_plist()
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_bytes(plistlib.dumps({"Label": LABEL, "ProgramArguments": cmd, "RunAtLoad": True,
-                                      "ProcessType": "Interactive"}))
+        from .config import APP_HOME
+        log = APP_HOME / "logs" / "radar.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(plistlib.dumps({
+            "Label": LABEL, "ProgramArguments": cmd, "RunAtLoad": True, "ProcessType": "Interactive",
+            "KeepAlive": {"SuccessfulExit": False},  # relaunch after a crash, but Quit from the menu stays quit
+            "StandardOutPath": str(log), "StandardErrorPath": str(log),
+        }))
     elif sys.platform == "win32":
         import subprocess
         import winreg

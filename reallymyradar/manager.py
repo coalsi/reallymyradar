@@ -69,7 +69,7 @@ class Manager:
         self.store = store
         self.sites: dict[str, SiteState] = {}
         workers = max(2, (os.cpu_count() or 8) - 2)
-        self.pool = ProcessPoolExecutor(max_workers=workers)
+        self.pool = ProcessPoolExecutor(max_workers=workers, initializer=_exit_with_parent, initargs=(os.getpid(),))
         self.workers = workers
         self.raw_dir = DATA_DIR / "raw"
         self._task: asyncio.Task | None = None
@@ -299,6 +299,20 @@ def _sweep(v: Volume, product: str, tilt: int):
     if product == "CREF":
         tilt = 0
     return lst[tilt] if 0 <= tilt < len(lst) else None
+
+
+def _exit_with_parent(parent_pid: int):
+    """Decode workers quit on their own if the app dies without shutting the pool down (killed, crashed,
+    or tray mode, where no clean shutdown runs). Otherwise they'd linger, each holding Py-ART in memory."""
+    import threading
+
+    def watch():
+        while True:
+            time.sleep(3)
+            if os.getppid() != parent_pid:
+                os._exit(0)
+
+    threading.Thread(target=watch, daemon=True).start()
 
 
 def _warm():
