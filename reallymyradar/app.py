@@ -179,6 +179,11 @@ def main():
         # the first log line would crash the server. Send everything to a log file in the data folder.
         (APP_HOME / "logs").mkdir(exist_ok=True)
         sys.stdout = sys.stderr = open(APP_HOME / "logs" / "radar.log", "a", buffering=1, encoding="utf-8")
+    for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252; never die on a character
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     store = SettingsStore()
     port = args.port or store.settings.server.port  # --port applies to this run only
 
@@ -188,7 +193,7 @@ def main():
             webbrowser.open(f"http://localhost:{port}")
         return
 
-    print(f"\n  ReallymyRadar  →  http://localhost:{port}   LAN: http://{lan_ip()}:{port}   "
+    print(f"\n  ReallymyRadar  ->  http://localhost:{port}   LAN: http://{lan_ip()}:{port}   "
           f"Pi: http://{lan_ip()}:{port}/pi   API: http://localhost:{port}/docs\n  data: {APP_HOME}\n")
     if args.headless:
         import uvicorn
