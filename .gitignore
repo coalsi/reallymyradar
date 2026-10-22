@@ -1,0 +1,9 @@
+.venv/
+build/
+dist/
+data/
+__pycache__/
+*.pyc
+settings.json
+.DS_Store
+.claude/

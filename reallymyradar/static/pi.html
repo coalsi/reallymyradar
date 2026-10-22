@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReallymyRadar · Kiosk</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0e13; overflow: hidden; cursor: none; }
+  img { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+  img.on { opacity: 1; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; color: rgba(255,255,255,.5); font: 18px system-ui; }
+</style>
+</head>
+<body>
+<div id="msg">Loading radar…</div>
+<script>
+// Cycles pre-composited frames from the Mac. All heavy lifting happens server-side,
+// so this runs fine on a Pi Zero. Any /image query param works here too:
+//   /pi?site=mosaic&product=CREF&zoom=9&frames=8&ms=400&refresh=60   (site=KTLX for one radar)
+const q = new URLSearchParams(location.search);
+const site = q.get("site") || "default", tilt = q.get("tilt") || "0";
+const product = q.get("product") || "";  // empty = server default (render.default_product)
+const nFrames = +(q.get("frames") || 10), ms = +(q.get("ms") || 450), refresh = +(q.get("refresh") || 60);
+const w = q.get("w") || innerWidth, h = q.get("h") || innerHeight;
+const pass = new URLSearchParams({ site, tilt, w, h });
+if (product) pass.set("product", product);
+for (const k of ["zoom", "lat", "lon", "scale", "basemap", "token"]) if (q.get(k)) pass.set(k, q.get(k));
+const fmt = q.get("fmt") || "jpg";
+let imgs = [], i = 0;
+
+async function load() {
+  try {
+    const r = await fetch(`/api/site/${site}?${pass}`);
+    const info = await r.json();
+    const frames = (info.frames || []).slice(-nFrames);
+    if (!frames.length) { document.getElementById("msg").textContent = `Waiting for ${info.site || site} data…`; return; }
+    const next = await Promise.all(frames.map((f) => new Promise((res) => {
+      const im = new Image();
+      im.onload = () => res(im); im.onerror = () => res(null);
+      im.src = `/image/frame/${f.id}.${fmt}?${pass}`;
+    })));
+    const ok = next.filter(Boolean);
+    if (!ok.length) return;
+    imgs.forEach((im) => im.remove());
+    imgs = ok; imgs.forEach((im) => document.body.appendChild(im));
+    document.getElementById("msg")?.remove();
+    i = imgs.length - 1;
+  } catch (e) { console.error(e); }
+}
+function tick() {
+  if (imgs.length) {
+    imgs.forEach((im, k) => im.classList.toggle("on", k === i));
+    const last = i === imgs.length - 1;
+    i = (i + 1) % imgs.length;
+    setTimeout(tick, last ? ms * 5 : ms);
+  } else setTimeout(tick, 500);
+}
+load().then(tick);
+setInterval(load, refresh * 1000);
+</script>
+</body>
+</html>

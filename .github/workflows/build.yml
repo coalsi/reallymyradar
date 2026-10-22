@@ -1,0 +1,55 @@
+name: Build apps
+
+# Builds the desktop app for macOS (Apple Silicon), Windows and Linux on every push to main,
+# smoke-tests each build headless, and attaches the zips to a GitHub Release when a v* tag is pushed.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, name: macos-arm64 }
+          - { os: windows-latest, name: windows-x64 }
+          - { os: ubuntu-22.04, name: linux-x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run pyinstaller packaging/reallymyradar.spec --noconfirm --distpath dist --workpath build
+      - name: Smoke test (headless server starts and serves the viewer)
+        shell: bash
+        env:
+          RMR_HOME: ${{ runner.temp }}/rmr
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then BIN=dist/ReallymyRadar.app/Contents/MacOS/ReallymyRadar
+          elif [ "$RUNNER_OS" = "Windows" ]; then BIN=dist/ReallymyRadar/ReallymyRadar.exe
+          else BIN=dist/ReallymyRadar/ReallymyRadar; fi
+          "$BIN" --headless --port 8600 > server.log 2>&1 &
+          for i in $(seq 1 90); do curl -sf http://127.0.0.1:8600/api/status && break; sleep 2; done
+          curl -sf http://127.0.0.1:8600/ > /dev/null
+          curl -sf "http://127.0.0.1:8600/api/sites/near?lat=35&lon=-97&n=1"
+          ! grep -q Traceback server.log || (cat server.log; exit 1)
+      - name: Zip
+        shell: bash
+        run: |
+          cd dist
+          if [ "$RUNNER_OS" = "macOS" ]; then ditto -c -k --keepParent ReallymyRadar.app ../ReallymyRadar-${{ matrix.name }}.zip
+          elif [ "$RUNNER_OS" = "Windows" ]; then 7z a ../ReallymyRadar-${{ matrix.name }}.zip ReallymyRadar
+          else tar czf ../ReallymyRadar-${{ matrix.name }}.tar.gz ReallymyRadar; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReallymyRadar-${{ matrix.name }}
+          path: ReallymyRadar-${{ matrix.name }}.*
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ReallymyRadar-${{ matrix.name }}.*

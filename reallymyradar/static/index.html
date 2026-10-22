@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0e13">
+<title>ReallymyRadar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="map"></div>
+
+<header class="glass" id="sitebar">
+  <div class="brand">ReallymyRadar</div>
+  <button id="siteBtn" class="site" title="Change radar site">
+    <span class="dot" id="liveDot"></span><span id="siteName">----</span><span class="muted" id="siteDist"></span>
+  </button>
+  <div id="siteMenu" class="menu glass hidden"></div>
+</header>
+
+<nav class="glass" id="tools">
+  <button id="locateBtn" title="My location">◎</button>
+  <button id="homeBtn" title="Home">⌂</button>
+  <button id="baseBtn" title="Basemap: dark / light / satellite">◐</button>
+  <button id="labelsBtn" class="on" title="Map labels">Aa</button>
+  <button id="ringsBtn" title="Range rings">◌</button>
+  <button id="settingsBtn" title="Settings">⚙</button>
+</nav>
+
+<aside class="glass" id="products"></aside>
+<div class="glass" id="tilts">
+  <button id="tiltUp" title="Higher tilt">▲</button>
+  <div id="tiltLabel">0.5°</div>
+  <button id="tiltDown" title="Lower tilt">▼</button>
+</div>
+
+<div class="glass" id="legend"><div id="legendTitle"></div><canvas id="legendBar" width="600" height="20"></canvas><div id="legendTicks"></div></div>
+
+<footer class="glass" id="timeline">
+  <button id="playBtn" title="Play / pause (space)">▶</button>
+  <div id="ticks"></div>
+  <div id="timeLabel"><b id="clock">--:--</b><span id="age"></span></div>
+</footer>
+
+<div id="toast" class="glass hidden"></div>
+
+<section id="drawer" class="hidden">
+  <div class="drawer-head">
+    <h2>Tuning</h2>
+    <button id="closeDrawer">✕</button>
+  </div>
+  <div id="settingsForm"></div>
+  <div class="links" id="links"></div>
+</section>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
