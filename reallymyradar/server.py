@@ -18,6 +18,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -501,5 +502,9 @@ def index():
 def pi():
     return FileResponse(STATIC / "pi.html")
 
+
+# Let other apps' pages (kiosks, dashboards, map widgets) read the API and draw tiles into canvases.
+# Added last so it wraps everything, including the tunnel token check's 401s.
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")

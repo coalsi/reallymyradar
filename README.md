@@ -59,6 +59,9 @@ Interactive docs live on every install at **`/docs`**. The main endpoints:
 | `GET/PUT /api/settings` | Read or patch any setting (partial JSON). |
 | `GET /api/sites/near?lat=&lon=` | Nearest radars. |
 
+CORS is open for `GET`, so any web page on your network can fetch the API and draw the tiles, e.g. as an OpenLayers
+`XYZ` source with `tileSize: 512` and `crossOrigin: 'anonymous'`, or a Leaflet `tileLayer` with `tileSize: 512, zoomOffset: -1`.
+
 Products: `CREF` composite (default), `REF` reflectivity, `VEL` velocity, `SW` spectrum width, `ZDR`, `CC`, `PHI`.
 VEL, SW and PHI are relative to each radar, so the mosaic serves them from the radar nearest the view.
 
