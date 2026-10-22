@@ -33,10 +33,11 @@ jobs:
           elif [ "$RUNNER_OS" = "Windows" ]; then BIN=dist/ReallymyRadar/ReallymyRadar.exe
           else BIN=dist/ReallymyRadar/ReallymyRadar; fi
           "$BIN" --headless --port 8600 > server.log 2>&1 &
+          fail() { echo "::error::$1"; cat server.log; cat "$RMR_HOME/logs/radar.log" 2>/dev/null; exit 1; }
           for i in $(seq 1 90); do curl -sf http://127.0.0.1:8600/api/status && break; sleep 2; done
-          curl -sf http://127.0.0.1:8600/ > /dev/null
-          curl -sf "http://127.0.0.1:8600/api/sites/near?lat=35&lon=-97&n=1"
-          ! grep -q Traceback server.log || (cat server.log; exit 1)
+          curl -sf http://127.0.0.1:8600/ > /dev/null || fail "viewer did not load"
+          curl -sf "http://127.0.0.1:8600/api/sites/near?lat=35&lon=-97&n=1" || fail "API did not answer"
+          ! grep -q Traceback server.log "$RMR_HOME/logs/radar.log" 2>/dev/null || fail "traceback in log"
       - name: Zip
         shell: bash
         run: |

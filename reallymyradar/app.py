@@ -174,6 +174,11 @@ def main():
     args = p.parse_args()
 
     from .config import APP_HOME, SettingsStore
+    if sys.stdout is None or sys.stderr is None:
+        # Windowed builds (Windows .exe, macOS .app) have no console: Python's stdout/stderr are None and
+        # the first log line would crash the server. Send everything to a log file in the data folder.
+        (APP_HOME / "logs").mkdir(exist_ok=True)
+        sys.stdout = sys.stderr = open(APP_HOME / "logs" / "radar.log", "a", buffering=1, encoding="utf-8")
     store = SettingsStore()
     port = args.port or store.settings.server.port  # --port applies to this run only
 
