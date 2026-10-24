@@ -43,7 +43,7 @@ download, and **red** on errors. Hover it for details. Its menu has: Open Radar 
 API docs · Copy network link · **Keep computer awake** · **Start at login** · Open data folder · Quit.
 
 While it runs, the app keeps the computer from idle-sleeping so kiosks and other devices never lose the radar
-(the display can still sleep). It releases the moment the app quits. Toggle it in the tray menu or ⚙ → Remote access.
+(the display can still sleep). It releases the moment the app quits. Toggle it in the tray menu or ⚙ → This computer.
 
 Headless installs report the same thing at `GET /api/status`. The Docker image has a built-in health check.
 
