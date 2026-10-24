@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import logging
 import time
 from collections import OrderedDict
@@ -28,7 +29,7 @@ from . import compose as C
 from . import mosaic as M
 from . import render as R
 from .colormaps import palettes_for_ui
-from .config import SettingsStore
+from .config import SettingsStore, serving_port
 from .manager import SITES, Manager, nearest_sites
 from .remote import Tunnel
 
@@ -127,7 +128,9 @@ async def ensure_home():
         async with httpx.AsyncClient(timeout=8) as c:
             j = (await c.get("https://ipinfo.io/json")).json()
         lat, lon = (float(x) for x in j["loc"].split(","))
-        store.update({"data": {"home_lat": lat, "home_lon": lon}})
+        label = ", ".join(x for x in (j.get("city"), j.get("region")) if x) or None
+        store.update({"data": {"home_lat": lat, "home_lon": lon,
+                               "home_label": f"{label} (approximate)" if label else None}})
         log.info("home location from IP: %.3f, %.3f (%s)", lat, lon, j.get("city"))
     except Exception as e:
         log.warning("could not geolocate by IP: %s", e)
@@ -154,6 +157,16 @@ def site_or_404(site: str) -> str:
 
 # ---------------- API ----------------
 
+def _lan_ip() -> str:
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("10.255.255.255", 1))  # no packet is sent; this just picks the LAN interface
+            return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+
+
 def _ngrok_state() -> dict:
     """Whether the ngrok agent is installed and logged in on *this* machine (for the setup guide)."""
     import shutil
@@ -178,8 +191,10 @@ def api_config():
     import sys
     d = store.settings.data
     host = {"os": {"darwin": "mac", "win32": "windows"}.get(sys.platform, "linux"),
-            "port": store.settings.server.port, "ngrok": _ngrok_state()}
-    return {"home": {"lat": d.home_lat, "lon": d.home_lon, "site": home_site()}, "products": PRODUCTS, "host": host,
+            "port": serving_port(store.settings), "ngrok": _ngrok_state(),
+            "lan_url": f"http://{_lan_ip()}:{serving_port(store.settings)}"}
+    return {"home": {"lat": d.home_lat, "lon": d.home_lon, "site": home_site(), "label": d.home_label},
+            "onboarded": d.onboarded, "products": PRODUCTS, "host": host,
             "version": store.version, "processing_version": store.processing_version,
             "settings": public_settings(), "palettes": palettes_for_ui(),
             "sites": [{"id": k, **v} for k, v in SITES.items()]}
@@ -221,8 +236,41 @@ async def put_settings(request: Request):
 @app.post("/api/home")
 async def set_home(request: Request):
     j = await request.json()
-    store.update({"data": {"home_lat": float(j["lat"]), "home_lon": float(j["lon"]), "home_site": j.get("site")}})
+    store.update({"data": {"home_lat": float(j["lat"]), "home_lon": float(j["lon"]), "home_site": j.get("site"),
+                           "home_label": j.get("label")}})
     return api_config()["home"]
+
+
+@app.get("/api/geocode")
+async def geocode(q: str):
+    """Address, city or ZIP -> places, for setting home. Street addresses go to the US Census geocoder,
+    everything else to OpenStreetMap Nominatim. Also accepts plain "lat, lon"."""
+    q = q.strip()
+    m = re.fullmatch(r"(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)", q)
+    if m:
+        return [{"label": f"{float(m[1]):.4f}, {float(m[2]):.4f}", "lat": float(m[1]), "lon": float(m[2])}]
+    out = []
+    headers = {"User-Agent": "ReallymyRadar/0.1 (self-hosted weather radar)"}
+    async with httpx.AsyncClient(timeout=10, headers=headers) as c:
+        if re.match(r"\d+\s+\S", q):  # starts with a house number: try the Census street-address geocoder
+            try:
+                r = await c.get("https://geocoding.geo.census.gov/geocoder/locations/onelineaddress",
+                                params={"address": q, "benchmark": "Public_AR_Current", "format": "json"})
+                for x in r.json()["result"]["addressMatches"][:3]:
+                    out.append({"label": x["matchedAddress"].title(), "lat": x["coordinates"]["y"],
+                                "lon": x["coordinates"]["x"]})
+            except Exception:
+                pass
+        if not out:
+            try:
+                r = await c.get("https://nominatim.openstreetmap.org/search",
+                                params={"q": q, "format": "jsonv2", "limit": 5, "countrycodes": "us,pr,gu"})
+                for x in r.json():
+                    out.append({"label": x["display_name"].replace(", United States", ""),
+                                "lat": float(x["lat"]), "lon": float(x["lon"])})
+            except Exception:
+                pass
+    return out
 
 
 @app.get("/api/sites/near")
@@ -331,6 +379,22 @@ async def point(lat: float, lon: float, wait: float = 0):
 @app.get("/api/remote")
 def remote_status():
     return tunnel.status()
+
+
+@app.get("/api/remote/qr.svg")
+def remote_qr(request: Request):
+    """QR code of the phone link (address + password), to scan instead of typing. Home network only."""
+    if via_tunnel(request):
+        raise HTTPException(403, "home network only")
+    link = tunnel.status().get("link")
+    if not link:
+        raise HTTPException(404, "remote access is off")
+    import io
+
+    import segno
+    buf = io.BytesIO()
+    segno.make(link, error="m").save(buf, kind="svg", scale=6, border=2, dark="#0b0e13", light="#ffffff")
+    return Response(buf.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/remote/{action}")

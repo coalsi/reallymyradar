@@ -13,11 +13,48 @@ It runs as a menu-bar / system-tray app on macOS, Windows and Linux, or headless
 
 ## Install
 
-**Download the app** from the [Releases](../../releases) page (macOS Apple Silicon, Windows, Linux) and open it.
-A radar icon appears in your menu bar / system tray, and the viewer opens in your browser.
+### 1. Download
 
-> These builds are unsigned for now. macOS: right-click the app → Open the first time.
-> Windows: SmartScreen → More info → Run anyway.
+Get the file for your computer from the **[latest release](../../releases/latest)**:
+
+| Computer | Download |
+|---|---|
+| Mac with Apple chip (M1 or newer) | `ReallymyRadar-mac-apple-silicon.zip` |
+| Mac with Intel chip | `ReallymyRadar-mac-intel.zip` |
+| Windows 10 / 11 | `ReallymyRadar-windows.zip` |
+| Linux (64-bit) | `ReallymyRadar-linux.tar.gz` |
+
+Not sure which Mac you have? Apple menu → **About This Mac**: "Chip: Apple M…" means Apple chip.
+
+### 2. Open it
+
+The app isn't signed with a paid Apple or Microsoft certificate yet, so the first launch needs one extra click.
+
+**Mac**
+1. Double-click the zip, then drag **ReallymyRadar** into your **Applications** folder.
+2. Open it. macOS will say it can't verify the app: click **Done**.
+3. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to ReallymyRadar. Confirm.
+4. A radar icon appears in your **menu bar** (top right). There's no Dock icon, by design.
+
+**Windows**
+1. Right-click the zip → **Extract All**, then open the folder and run **ReallymyRadar.exe**.
+2. If "Windows protected your PC" appears: click **More info → Run anyway**.
+3. When Windows Firewall asks, tick **Private networks** and click **Allow**, so your phone and other devices can see the radar.
+4. A radar icon appears in the **system tray** by the clock. Click the **^** arrow if it's hidden.
+
+**Linux**
+```bash
+tar xzf ReallymyRadar-linux.tar.gz && ./ReallymyRadar/ReallymyRadar
+```
+The icon shows in the system tray on most desktops. On GNOME, the tray needs the "AppIndicator" extension; without it,
+the app still runs and you use it from the browser.
+
+### 3. Set it up
+
+Your browser opens a short welcome: type your address, city or ZIP (or use your location), and you're done.
+Then, in the radar icon's menu, tick **Start at login** so it's always there.
+
+### Other ways to run it
 
 **From source** (any OS with Python 3.12+ and [uv](https://docs.astral.sh/uv/)):
 
@@ -94,9 +131,14 @@ or the file itself. Palettes live in `reallymyradar/colormaps.py`.
 ## Privacy
 
 Nothing leaves your machine except requests for public data: radar files from NOAA's AWS buckets and map tiles from Esri.
-The one exception is a fresh install with no home location set: it makes a single request to `ipinfo.io` to guess a
-rough home location from your IP address. To skip that, set `data.home_lat` / `data.home_lon` in `settings.json`
-before the first launch, or use ⚙ → Home afterwards. Your home location stays in your local settings file.
+The exceptions:
+- A fresh install with no home set makes one request to `ipinfo.io` to guess a rough starting location from your IP
+  address. To skip it, set `data.home_lat` / `data.home_lon` in `settings.json` before the first launch.
+- Searching for a place sends what you typed to the US Census geocoder (street addresses) or OpenStreetMap's
+  Nominatim (cities and ZIP codes).
+- Remote access, when you turn it on, goes through your own ngrok account.
+
+Your home location stays in your local settings file.
 
 ## Away from home (ngrok)
 

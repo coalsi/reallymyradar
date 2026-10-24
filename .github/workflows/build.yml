@@ -9,15 +9,19 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write   # attach the downloads to a release on v* tags
+
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-latest, name: macos-arm64 }
-          - { os: windows-latest, name: windows-x64 }
-          - { os: ubuntu-22.04, name: linux-x64 }
+          - { os: macos-latest, name: mac-apple-silicon }
+          - { os: macos-15-intel, name: mac-intel }
+          - { os: windows-latest, name: windows }
+          - { os: ubuntu-22.04, name: linux }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

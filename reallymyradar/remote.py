@@ -83,7 +83,8 @@ class Tunnel:
                 opts = {"authtoken": token}
                 if s.server.ngrok_domain:
                     opts["domain"] = s.server.ngrok_domain.removeprefix("https://").removeprefix("http://").strip("/")
-                listener = ngrok.forward(f"localhost:{s.server.port}", **opts)
+                from .config import serving_port
+                listener = ngrok.forward(f"localhost:{serving_port(s)}", **opts)
                 self.url = listener.url()
                 self.state = "on"
                 self.store.update({"server": {"remote_enabled": True}})

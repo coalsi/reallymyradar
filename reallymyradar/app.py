@@ -126,9 +126,9 @@ def run_tray(port: int, open_browser: bool):
         def run():
             st = tunnel.start()
             on_ui_thread(icon.update_menu)
-            if st["state"] == "on" and st["link"] and copy_to_clipboard(st["link"]):
-                if icon.HAS_NOTIFICATION:
-                    icon.notify("Remote access is on. Phone link copied.", "ReallymyRadar")
+            if st["state"] == "on" and st["link"]:
+                copy_to_clipboard(st["link"])
+                webbrowser.open(local + "/?settings=ngrok")  # shows the QR code to scan with the phone
 
         threading.Thread(target=run, daemon=True).start()
         on_ui_thread(icon.update_menu)
@@ -169,6 +169,7 @@ def run_tray(port: int, open_browser: bool):
         # Remote access (ngrok tunnel run by the app itself)
         pystray.MenuItem(lambda item: f"Away from home: {remote('url')}", None, enabled=False,
                          visible=lambda item: remote("state") == "on"),
+        pystray.MenuItem("Show phone QR code", open_url("/?settings=ngrok"), visible=lambda item: remote("state") == "on"),
         pystray.MenuItem("Copy phone link", copy_remote, visible=lambda item: remote("state") == "on"),
         pystray.MenuItem("Stop remote access", stop_remote, visible=lambda item: remote("state") == "on"),
         pystray.MenuItem("Starting remote access…", None, enabled=False,
@@ -233,6 +234,7 @@ def main():
             pass
     store = SettingsStore()
     port = args.port or store.settings.server.port  # --port applies to this run only
+    os.environ["RMR_PORT"] = str(port)  # so the server's links and the ngrok tunnel use it too
 
     if already_running(port):
         print(f"ReallymyRadar is already running at http://localhost:{port}")

@@ -75,6 +75,7 @@ let homeMarker = null, meMarker = null;
   buildProducts();
   drawSiteMarkers();
   await loadSite(true);
+  if (!S.cfg.onboarded && !new URLSearchParams(location.search).has("settings")) showWelcome();
   const want = new URLSearchParams(location.search).get("settings"); // tray menu "Settings" / "Set up remote access…"
   if (want !== null) { S.scrollToRemote = want === "ngrok"; $("settingsBtn").click(); }
   setInterval(() => loadSite(false), 20000);
@@ -488,9 +489,16 @@ function buildSettings() {
     if (rows === "remote") { buildRemoteAccess(f); continue; }
     for (const [path, label, kind, opts, help] of rows) f.appendChild(row(path, label, kind, opts, getPath(s, path), help));
   }
-  f.insertAdjacentHTML("beforeend", `<h3>Home</h3><div class="btnrow"><button id="setHomeHere">Set home = map center</button><button id="setHomeMe">Set home = my GPS</button></div>`);
-  $("setHomeHere").onclick = () => { const c = map.getCenter(); setHome(c.lat, c.lng); };
-  $("setHomeMe").onclick = () => S.me ? setHome(S.me.lat, S.me.lon) : toast("Tap ◎ first to get your location.", 3000);
+  f.insertAdjacentHTML("beforeend", `<h3>Home</h3><p class="hint" id="homeNow"></p><div id="homeSearch"></div>
+    <div class="btnrow"><button id="setHomeHere">Use map center</button><button id="setHomeMe">Use my location</button></div>
+    <div class="btnrow"><button id="replayWelcome">Show the welcome guide again</button></div>`);
+  const h = S.cfg.home;
+  $("homeNow").textContent = h.lat != null ? `Now: ${h.label || `${(+h.lat).toFixed(3)}, ${(+h.lon).toFixed(3)}`}` : "Not set.";
+  const pickHome = async (lat, lon, label) => { await setHome(lat, lon, label); buildSettings(); };
+  $("homeSearch").appendChild(placeSearch(pickHome));
+  $("setHomeHere").onclick = () => { const c = map.getCenter(); pickHome(c.lat, c.lng, "Map center"); };
+  $("setHomeMe").onclick = () => useGps(pickHome);
+  $("replayWelcome").onclick = () => { $("drawer").classList.add("hidden"); showWelcome(); };
   const base = location.origin, t = TOKEN ? `&token=${TOKEN}` : "";
   const q = `site=${S.site}&product=${S.product}`;
   $("links").innerHTML = `<h3>Links for your devices</h3>
@@ -593,8 +601,10 @@ async function buildRemoteAccess(f) {
     : !haveToken ? "Remote access is off. Paste your ngrok authtoken below first."
     : "Remote access is off.";
   if (on) {
-    linkEl.innerHTML = `<p class="hint">Address: <code></code></p><p class="hint">Phone link with your password (open it once, then bookmark the plain address):</p>`;
-    linkEl.querySelector("code").textContent = st.url;
+    linkEl.innerHTML = `<div class="qr"><img alt="QR code for your phone link"><p>Point your phone's camera here.
+      It opens the radar and remembers your password. If the address changes after a restart, just scan again.</p></div>
+      <p class="hint">Or send yourself this link (it includes your password):</p>`;
+    linkEl.querySelector("img").src = `/api/remote/qr.svg?u=${encodeURIComponent(st.url)}`;
     if (st.link) linkEl.appendChild(cmdBlock(st.link));
   }
   btn.textContent = on ? "Stop remote access" : starting ? "Starting…" : "Start remote access";
@@ -687,10 +697,82 @@ async function flush() {
     loadSite(false);
   } catch (e) { toast("Setting rejected: " + e.message, 5000); }
 }
-async function setHome(lat, lon) {
+async function setHome(lat, lon, label) {
   const near = await api(`/api/sites/near?lat=${lat}&lon=${lon}&n=1&wsr_only=true`);
-  S.cfg.home = await api("/api/home", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lat, lon }) });
+  S.cfg.home = await api("/api/home", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lat, lon, label: label || null }) });
   if (homeMarker) homeMarker.remove();
   homeMarker = L.marker([lat, lon], { icon: L.divIcon({ className: "", html: '<div class="home-marker"></div>', iconSize: [18, 18] }), interactive: false, pane: "labels" }).addTo(map);
-  toast(`Home set · nearest radar ${near[0].id}`, 3000);
+  map.flyTo([lat, lon], Math.max(map.getZoom(), 8), { duration: 0.8 });
+  toast(`Home set${label ? `: ${label}` : ""} · nearest radar ${near[0].id}`, 3000);
+}
+
+// Address / city / ZIP search box → onPick(lat, lon, label)
+function placeSearch(onPick) {
+  const d = document.createElement("div");
+  d.innerHTML = `<form class="tokrow"><input type="search" placeholder="Address, city or ZIP" spellcheck="false" autocomplete="street-address"><button>Find</button></form><div class="places"></div>`;
+  const input = d.querySelector("input"), list = d.querySelector(".places");
+  d.querySelector("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const q = input.value.trim();
+    if (!q) return;
+    list.innerHTML = '<p class="hint">Searching…</p>';
+    let res = [];
+    try { res = await api(`/api/geocode?q=${encodeURIComponent(q)}`); } catch {}
+    list.innerHTML = res.length ? "" : '<p class="hint">Nothing found. Try adding the city and state, or a ZIP code.</p>';
+    for (const r of res) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = r.label;
+      b.onclick = () => { list.innerHTML = ""; input.value = ""; onPick(r.lat, r.lon, r.label); };
+      list.appendChild(b);
+    }
+  };
+  return d;
+}
+
+function useGps(onPick) {
+  if (!isSecureContext || !navigator.geolocation) {
+    return toast("Browsers only share location over https or on this computer itself. Search for your address instead.", 5000);
+  }
+  toast("Locating…");
+  navigator.geolocation.getCurrentPosition((p) => { hideToast(); onPick(p.coords.latitude, p.coords.longitude, "My location"); },
+    (err) => toast(`Location failed: ${err.message}`, 4000), { enableHighAccuracy: true, timeout: 15000 });
+}
+
+// ---------- first-run welcome ----------
+function showWelcome() {
+  const host = S.cfg.host || {}, home = S.cfg.home || {};
+  const card = $("welcomeCard");
+  const isMac = host.os === "mac", tray = isMac ? "menu bar (top right)" : "system tray (by the clock)";
+  card.innerHTML = `
+    <h1>Welcome to ReallymyRadar</h1>
+    <p class="lead">Live, high-resolution NOAA weather radar, running on this computer and shared with your devices.</p>
+    <h3>1 · Where's home?</h3>
+    <p class="hint" id="wNow"></p>
+    <div id="wSearch"></div>
+    <div class="btnrow"><button id="wGps">Use my location</button><button id="wCenter">Use the map's center</button></div>
+    <h3>2 · Look for the radar icon</h3>
+    <p>It's in your ${tray}. Its dot is <b class="g">green</b> when radar is flowing. That menu reopens this page and
+      can start the app at login. You can close this tab any time; the radar keeps running.</p>
+    <h3>3 · Put it on other screens</h3>
+    <p>Any phone, tablet, TV or Raspberry Pi on your Wi-Fi can open:</p>
+    <div id="wLinks"></div>
+    <p class="hint">Away from home? ⚙ Settings → <i>Away from home</i> sets that up in a couple of clicks.</p>
+    <div class="btnrow"><button id="wDone" class="primary">Show me the radar</button></div>`;
+  const now = () => ($("wNow").textContent = S.cfg.home.lat != null
+    ? `Home is set to: ${S.cfg.home.label || `${(+S.cfg.home.lat).toFixed(3)}, ${(+S.cfg.home.lon).toFixed(3)}`}`
+    : "Home isn't set yet.");
+  now();
+  const pick = async (lat, lon, label) => { await setHome(lat, lon, label); now(); };
+  $("wSearch").appendChild(placeSearch(pick));
+  $("wGps").onclick = () => useGps(pick);
+  $("wCenter").onclick = () => { const c = map.getCenter(); pick(c.lat, c.lng, "Map center"); };
+  const lan = host.lan_url || location.origin;
+  $("wLinks").append(cmdBlock(lan), cmdBlock(`${lan}/pi`));
+  $("wLinks").insertAdjacentHTML("beforeend", '<p class="hint">The first is the full radar. The second is a hands-off, full-screen loop for wall displays.</p>');
+  $("wDone").onclick = async () => {
+    $("welcome").classList.add("hidden");
+    try { await api("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: { onboarded: true } }) }); } catch {}
+    S.cfg.onboarded = true;
+  };
+  $("welcome").classList.remove("hidden");
 }

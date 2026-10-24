@@ -69,6 +69,8 @@ class DataSettings(BaseModel):
     home_lat: float | None = None
     home_lon: float | None = None
     home_site: str | None = None         # None = nearest to home
+    home_label: str | None = None        # place name shown in the viewer ("Surprise, AZ (approximate)")
+    onboarded: bool = False              # the viewer's first-run welcome has been completed
     pinned_sites: list[str] = Field(default_factory=list)  # always kept warm
     realtime_chunks: bool = True         # live partial volumes (~1 min latency) vs archive only (~10 min)
     frames_to_keep: int = Field(12, ge=1, le=60)
@@ -116,6 +118,11 @@ class Settings(BaseModel):
     mosaic: MosaicSettings = Field(default_factory=MosaicSettings)
     image: ImageSettings = Field(default_factory=ImageSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
+
+
+def serving_port(settings: "Settings") -> int:
+    """The port actually being served: `--port` (passed down as RMR_PORT) wins over the saved setting."""
+    return int(os.environ.get("RMR_PORT") or settings.server.port)
 
 
 class SettingsStore:
