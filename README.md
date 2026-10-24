@@ -100,41 +100,23 @@ before the first launch, or use ⚙ → Home afterwards. Your home location stay
 
 ## Away from home (ngrok)
 
-The viewer's ⚙ → **Away from home** walks through this with copy buttons, and ticks off steps already done on the
-radar computer. Run everything on the computer the radar runs on.
+The app has ngrok built in, so there's nothing to install and no terminal.
 
 1. Make a free account at [ngrok.com](https://dashboard.ngrok.com/signup) and copy your
    [authtoken](https://dashboard.ngrok.com/get-started/your-authtoken).
-2. Install ngrok:
+2. Paste it in ⚙ → **Away from home**. If ngrok is already set up on this computer, its authtoken is found automatically.
+3. Click **Start remote access**, in the menu-bar menu or in that same settings section.
 
-   macOS (Terminal, needs [Homebrew](https://brew.sh)):
-   ```bash
-   brew install ngrok
-   ```
-   Windows (PowerShell):
-   ```powershell
-   winget install ngrok -s msstore
-   ```
-   Debian / Ubuntu / Raspberry Pi OS (other distros: `snap install ngrok`):
-   ```bash
-   curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list && sudo apt update && sudo apt install ngrok
-   ```
-3. Connect it to your account:
-   ```bash
-   ngrok config add-authtoken PASTE_YOUR_AUTHTOKEN
-   ```
-4. Pick a radar password: ⚙ → Away from home → **Generate** (stored as `server.access_token`). Anything arriving through
-   the tunnel needs it, while devices on your home network don't.
-5. Start the tunnel, and leave it running:
-   ```bash
-   ngrok http 8600
-   ```
-   ngrok prints a *Forwarding* address like `https://abcd-1234.ngrok-free.app`. For the same address every time, use your
-   free domain from [dashboard.ngrok.com/domains](https://dashboard.ngrok.com/domains):
-   `ngrok http 8600 --url https://YOUR-DOMAIN`. (`scripts/tunnel.sh` does this step, and refuses to start without a password.)
-6. On your phone, open `https://YOUR-ADDRESS/?token=YOUR-PASSWORD` once. ngrok's free plan shows a one-time "Visit Site"
-   notice. After that, a cookie remembers the password for a year and the plain address works. Over https, the
-   viewer's ◎ button can use your phone's GPS.
+The menu then shows your public address and **Copy phone link**, which includes your radar password. Open that link
+once on your phone: ngrok's free plan shows a one-time "Visit Site" notice, then a cookie remembers the password for a
+year. Remote access stays on, even after restarts, until you choose **Stop remote access**.
+
+- A radar password (`server.access_token`) is generated automatically if you haven't set one. Anything arriving
+  through the tunnel without it gets a 401. With no password set, tunnel traffic is refused outright.
+- Remote access can only be switched on or off from your home network, never through the tunnel.
+- Free ngrok accounts get a permanent address. To use a specific domain, set it in ⚙ → Away from home.
+- Your ngrok authtoken stays in your local settings file and is masked in every API response.
+- Prefer running ngrok yourself? The settings section has the per-OS terminal commands, and `scripts/tunnel.sh` still works.
 
 ## Headless at boot (Linux systemd)
 
@@ -164,6 +146,7 @@ reallymyradar/
   autostart.py  start at login (LaunchAgent / Run key / XDG autostart)
   server.py     FastAPI: API, tiles, images, pages
   manager.py    on-demand radar polling, frame store, reprocessing
+  remote.py     built-in ngrok tunnel for remote access         keepawake.py  stop idle sleep while running
   fetch.py      S3 listing/downloads (archive + live chunks)
   decode.py     Level II -> cleaned uniform polar sweeps per product (worker processes)
   mosaic.py     radar selection, time slots, closest-radar blending

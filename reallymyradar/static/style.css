@@ -134,3 +134,10 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .tokrow input { flex: 1; min-width: 0; background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; font: 12px var(--mono); }
 .okmark { color: var(--live); font-size: 12px; }
 .warnmark { color: var(--warn); }
+.remote-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 4px 0 10px; background: rgba(255,255,255,.03); }
+.remote-card.on { border-color: rgba(61,220,132,.45); background: rgba(61,220,132,.06); }
+.remote-state { font-size: 13px; }
+.remote-card .btnrow { margin-top: 8px; }
+.remote-card .btnrow button:disabled { opacity: .5; cursor: default; }
+details.manual { margin-top: 10px; font-size: 12.5px; }
+details.manual summary { cursor: pointer; color: var(--muted); }

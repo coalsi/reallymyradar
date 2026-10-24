@@ -7,6 +7,7 @@ dependencies = [
     "arm-pyart>=2.3.0",
     "fastapi>=0.160.0",
     "httpx>=0.28.1",
+    "ngrok>=1.7",
     "numpy>=2.5.4",
     "pillow>=13.0.0",
     "platformdirs>=4.13.5",

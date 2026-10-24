@@ -10,7 +10,7 @@ ICON = {"darwin": "icon.icns", "win32": "icon.ico"}.get(sys.platform, "icon.png"
 
 hidden = (
     collect_submodules("pyart", filter=lambda m: ".tests" not in m)
-    + collect_submodules("uvicorn") + collect_submodules("pystray") + ["reallymyradar.server"]
+    + collect_submodules("uvicorn") + collect_submodules("pystray") + collect_submodules("ngrok") + ["reallymyradar.server"]
 )
 datas = [
     (str(PKG / "static"), "reallymyradar/static"),

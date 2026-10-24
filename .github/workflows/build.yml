@@ -37,6 +37,7 @@ jobs:
           for i in $(seq 1 90); do curl -sf http://127.0.0.1:8600/api/status && break; sleep 2; done
           curl -sf http://127.0.0.1:8600/ > /dev/null || fail "viewer did not load"
           curl -sf "http://127.0.0.1:8600/api/sites/near?lat=35&lon=-97&n=1" || fail "API did not answer"
+          curl -sf http://127.0.0.1:8600/api/remote | grep -q '"available":true' || fail "built-in ngrok did not load"
           ! grep -q Traceback server.log "$RMR_HOME/logs/radar.log" 2>/dev/null || fail "traceback in log"
       - name: Zip
         shell: bash

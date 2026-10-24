@@ -75,7 +75,8 @@ let homeMarker = null, meMarker = null;
   buildProducts();
   drawSiteMarkers();
   await loadSite(true);
-  if (new URLSearchParams(location.search).has("settings")) $("settingsBtn").click(); // tray menu "Settings"
+  const want = new URLSearchParams(location.search).get("settings"); // tray menu "Settings" / "Set up remote access…"
+  if (want !== null) { S.scrollToRemote = want === "ngrok"; $("settingsBtn").click(); }
   setInterval(() => loadSite(false), 20000);
   setInterval(updateAge, 15000);
 })();
@@ -553,61 +554,81 @@ function newToken() {
   return Array.from(r, (b) => abc[b % abc.length]).join("");
 }
 
-function buildRemoteAccess(f) {
+async function buildRemoteAccess(f) {
   const host = S.cfg.host || { os: "mac", port: 8600, ngrok: {} };
-  S.ngrokOs = S.ngrokOs || host.os;
-  const ng = host.ngrok || {};
-  const sameOs = S.ngrokOs === host.os;
-  const done = (yes) => (yes && sameOs ? ' <span class="okmark">✓ done on this computer</span>' : "");
   const box = document.createElement("div");
   box.className = "steps";
-  box.innerHTML = `
-    <p class="hint">Run these on the computer the radar runs on${host.os ? ` (it's on <b>${NGROK_INSTALL[host.os].name}</b>)` : ""}.</p>
-    <div class="ostabs prodtabs">${Object.entries(NGROK_INSTALL).map(([k, v]) => `<button data-os="${k}" class="${k === S.ngrokOs ? "on" : ""}">${v.name}</button>`).join("")}</div>
-    <ol>
-      <li><b>Make a free ngrok account</b>, then open your authtoken page and copy the token.
-        <a href="https://dashboard.ngrok.com/signup" target="_blank">Sign up</a> ·
-        <a href="https://dashboard.ngrok.com/get-started/your-authtoken" target="_blank">Your authtoken</a>${done(ng.logged_in)}</li>
-      <li><b>Install ngrok</b>${done(ng.installed)}<div id="ngInstall"></div><p class="hint">${NGROK_INSTALL[S.ngrokOs].where}</p></li>
-      <li><b>Connect it to your account</b>: paste your authtoken in place of the capitals.${done(ng.logged_in)}<div id="ngAuth"></div></li>
-      <li><b>Pick a radar password.</b> Anyone reaching the radar through ngrok needs it.
-        <div class="tokrow"><input id="ngTok" type="text" placeholder="not set" spellcheck="false"><button id="ngGen">Generate</button></div>
-        <p class="hint" id="ngTokState"></p></li>
-      <li><b>Start the tunnel</b> and leave that window open.<div id="ngRun"></div>
-        <p class="hint">ngrok shows a <i>Forwarding</i> line like <code>https://abcd-1234.ngrok-free.app</code>. That's your radar's address.
-        For the same address every time, add your free domain from <a href="https://dashboard.ngrok.com/domains" target="_blank">dashboard.ngrok.com/domains</a>:
-        <code>ngrok http ${host.port} --url https://YOUR-DOMAIN</code></p></li>
-      <li><b>Open it on your phone.</b> Paste the Forwarding address:
-        <div class="tokrow"><input id="ngUrl" type="text" placeholder="https://….ngrok-free.app" spellcheck="false"></div>
-        <div id="ngLink"></div>
-        <p class="hint">Open that link once. ngrok's free plan shows a one-time “Visit Site” notice, then the radar loads and remembers your password for a year.
-        After that, the plain address works. Bookmark it or add it to your home screen.</p></li>
-    </ol>`;
   f.appendChild(box);
-  box.querySelectorAll(".ostabs button").forEach((b) => (b.onclick = () => { S.ngrokOs = b.dataset.os; buildSettings(); }));
-  box.querySelector("#ngInstall").appendChild(cmdBlock(NGROK_INSTALL[S.ngrokOs].cmd));
-  box.querySelector("#ngAuth").appendChild(cmdBlock("ngrok config add-authtoken PASTE_YOUR_AUTHTOKEN"));
-  box.querySelector("#ngRun").appendChild(cmdBlock(`ngrok http ${host.port}`));
+  let st;
+  try { st = await api("/api/remote"); } catch (e) { box.textContent = "Couldn't read remote access status."; return; }
+  const sv = S.cfg.settings.server;
+  const on = st.state === "on", starting = st.state === "starting";
+  const haveToken = st.state !== "needs_authtoken";
 
-  const tok = box.querySelector("#ngTok"), url = box.querySelector("#ngUrl");
-  tok.value = S.cfg.settings.server.access_token || "";
-  try { url.value = localStorage.getItem("rmr_ngrok_url") || ""; } catch {}
-  const refresh = () => {
-    const t = tok.value.trim();
-    box.querySelector("#ngTokState").innerHTML = t
-      ? '<span class="okmark">✓ Set.</span> Required through ngrok; your home network doesn\'t need it.'
-      : '<span class="warnmark">Not set.</span> Set one before starting ngrok, or anyone with the address could use your radar.';
-    const link = box.querySelector("#ngLink");
-    link.innerHTML = "";
-    let u = url.value.trim().replace(/\/+$/, "");
-    if (u && !/^https?:\/\//.test(u)) u = "https://" + u;
-    if (u && t) link.appendChild(cmdBlock(`${u}/?token=${encodeURIComponent(t)}`));
+  box.innerHTML = `
+    <div class="remote-card ${on ? "on" : ""}">
+      <div class="remote-state" id="rmState"></div>
+      <div id="rmLink"></div>
+      <div class="btnrow"><button id="rmToggle"></button></div>
+    </div>
+    <ol>
+      <li><b>Free ngrok account.</b> <a href="https://dashboard.ngrok.com/signup" target="_blank">Sign up</a>, then copy your
+        <a href="https://dashboard.ngrok.com/get-started/your-authtoken" target="_blank">authtoken</a>.
+        ${st.authtoken_source === "ngrok config" || st.authtoken_source === "environment" ? '<span class="okmark">✓ found your existing ngrok setup</span>' : ""}</li>
+      <li><b>Paste the authtoken here</b> (saved in this app only):
+        <div class="tokrow"><input id="rmAuth" type="password" placeholder="${st.authtoken_source && st.authtoken_source !== "settings" ? "not needed, using your ngrok setup" : "paste authtoken"}" spellcheck="false" autocomplete="off"></div></li>
+      <li><b>Radar password.</b> Phones away from home need it once. One is made for you if you leave it blank.
+        <div class="tokrow"><input id="ngTok" type="text" placeholder="made automatically" spellcheck="false"><button id="ngGen">Generate</button></div></li>
+      <li><b>Optional: same address every time.</b> Your free fixed domain from
+        <a href="https://dashboard.ngrok.com/domains" target="_blank">dashboard.ngrok.com/domains</a>:
+        <div class="tokrow"><input id="rmDomain" type="text" placeholder="e.g. your-name.ngrok-free.dev" spellcheck="false"></div></li>
+    </ol>
+    <p class="hint">After that it's one click here or in the menu-bar menu (<i>Start remote access</i>). It stays on, even after restarts, until you stop it.</p>
+    <details class="manual"><summary>Prefer running ngrok yourself in a terminal?</summary><div id="manual"></div></details>`;
+
+  const stateEl = box.querySelector("#rmState"), btn = box.querySelector("#rmToggle"), linkEl = box.querySelector("#rmLink");
+  stateEl.innerHTML = on ? '<span class="okmark">● Remote access is on</span>'
+    : starting ? "Starting…"
+    : st.state === "error" ? `<span class="warnmark">Couldn't start:</span> ${st.error}`
+    : !haveToken ? "Remote access is off. Paste your ngrok authtoken below first."
+    : "Remote access is off.";
+  if (on) {
+    linkEl.innerHTML = `<p class="hint">Address: <code></code></p><p class="hint">Phone link with your password (open it once, then bookmark the plain address):</p>`;
+    linkEl.querySelector("code").textContent = st.url;
+    if (st.link) linkEl.appendChild(cmdBlock(st.link));
+  }
+  btn.textContent = on ? "Stop remote access" : starting ? "Starting…" : "Start remote access";
+  btn.disabled = starting || (!on && !haveToken);
+  btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = on ? "Stopping…" : "Starting… (a few seconds)";
+    try { await api(`/api/remote/${on ? "stop" : "start"}`, { method: "POST" }); }
+    catch (e) { toast("Remote access: " + e.message, 5000); }
+    S.cfg = await api("/api/config"); buildSettings();
   };
-  const saveTok = () => { send("server.access_token", tok.value.trim() || null, true); refresh(); };
-  tok.onchange = saveTok;
-  box.querySelector("#ngGen").onclick = () => { tok.value = newToken(); saveTok(); };
-  url.oninput = () => { try { localStorage.setItem("rmr_ngrok_url", url.value.trim()); } catch {} refresh(); };
-  refresh();
+
+  const auth = box.querySelector("#rmAuth");
+  if (sv.ngrok_authtoken) auth.placeholder = `saved (${sv.ngrok_authtoken.slice(-4)})`;
+  auth.onchange = () => { if (auth.value.trim()) { send("server.ngrok_authtoken", auth.value.trim(), true); setTimeout(buildSettings, 600); } };
+  const tok = box.querySelector("#ngTok");
+  tok.value = sv.access_token || "";
+  tok.onchange = () => send("server.access_token", tok.value.trim() || null, true);
+  box.querySelector("#ngGen").onclick = () => { tok.value = newToken(); tok.onchange(); };
+  const dom = box.querySelector("#rmDomain");
+  dom.value = sv.ngrok_domain || "";
+  dom.onchange = () => send("server.ngrok_domain", dom.value.trim() || null, true);
+
+  // manual route: the commands from before, per OS
+  const m = box.querySelector("#manual");
+  S.ngrokOs = S.ngrokOs || host.os;
+  m.innerHTML = `<div class="ostabs prodtabs">${Object.entries(NGROK_INSTALL).map(([k, v]) => `<button data-os="${k}" class="${k === S.ngrokOs ? "on" : ""}">${v.name}</button>`).join("")}</div>
+    <p class="hint">${NGROK_INSTALL[S.ngrokOs].where}</p>`;
+  m.querySelectorAll("button").forEach((b) => (b.onclick = () => { S.ngrokOs = b.dataset.os; S.manualOpen = true; buildSettings(); }));
+  m.appendChild(cmdBlock(NGROK_INSTALL[S.ngrokOs].cmd));
+  m.appendChild(cmdBlock("ngrok config add-authtoken PASTE_YOUR_AUTHTOKEN"));
+  m.appendChild(cmdBlock(`ngrok http ${host.port}`));
+  if (S.manualOpen) box.querySelector("details").open = true;
+  if (starting) setTimeout(() => !$("drawer").classList.contains("hidden") && buildSettings(), 2000);
+  if (S.scrollToRemote) { S.scrollToRemote = false; box.previousElementSibling?.previousElementSibling?.scrollIntoView(); }
 }
 
 function row(path, label, kind, opts, value, help, nullable) {

@@ -91,7 +91,7 @@ def run_tray(port: int, open_browser: bool):
     srv = ServerThread(port)
     srv.start()
     from .keepawake import follow_setting
-    from .server import store
+    from .server import store, tunnel
     awake = follow_setting(lambda: store.settings.server.keep_awake)
 
     def state() -> tuple[str, str]:
@@ -114,6 +114,31 @@ def run_tray(port: int, open_browser: bool):
             icon.notify(f"Copied {lan}", "ReallymyRadar") if icon.HAS_NOTIFICATION else None
         else:
             webbrowser.open(lan)
+
+    def remote(key: str):
+        return tunnel.status().get(key)
+
+    def start_remote(icon, item):
+        if remote("state") == "needs_authtoken":  # first time: the viewer walks through pasting the ngrok authtoken
+            webbrowser.open(local + "/?settings=ngrok")
+            return
+
+        def run():
+            st = tunnel.start()
+            on_ui_thread(icon.update_menu)
+            if st["state"] == "on" and st["link"] and copy_to_clipboard(st["link"]):
+                if icon.HAS_NOTIFICATION:
+                    icon.notify("Remote access is on. Phone link copied.", "ReallymyRadar")
+
+        threading.Thread(target=run, daemon=True).start()
+        on_ui_thread(icon.update_menu)
+
+    def stop_remote(icon, item):
+        threading.Thread(target=lambda: (tunnel.stop(), on_ui_thread(icon.update_menu)), daemon=True).start()
+
+    def copy_remote(icon, item):
+        if remote("link"):
+            copy_to_clipboard(remote("link"))
 
     def toggle_login(icon, item):
         autostart.disable() if autostart.is_enabled() else autostart.enable()
@@ -140,6 +165,19 @@ def run_tray(port: int, open_browser: bool):
         pystray.MenuItem("Kiosk view (Raspberry Pi)", open_url("/pi")),
         pystray.MenuItem("API docs", open_url("/docs")),
         pystray.MenuItem("Copy network link", copy_link),
+        pystray.Menu.SEPARATOR,
+        # Remote access (ngrok tunnel run by the app itself)
+        pystray.MenuItem(lambda item: f"Away from home: {remote('url')}", None, enabled=False,
+                         visible=lambda item: remote("state") == "on"),
+        pystray.MenuItem("Copy phone link", copy_remote, visible=lambda item: remote("state") == "on"),
+        pystray.MenuItem("Stop remote access", stop_remote, visible=lambda item: remote("state") == "on"),
+        pystray.MenuItem("Starting remote access…", None, enabled=False,
+                         visible=lambda item: remote("state") == "starting"),
+        pystray.MenuItem(lambda item: f"Remote access failed: {remote('error')}", None, enabled=False,
+                         visible=lambda item: remote("state") == "error"),
+        pystray.MenuItem(lambda item: "Set up remote access…" if remote("state") == "needs_authtoken"
+                         else "Start remote access (phone, away from home)", start_remote,
+                         visible=lambda item: remote("state") in ("off", "error", "needs_authtoken")),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Keep computer awake", toggle_awake, checked=lambda item: store.settings.server.keep_awake),
         pystray.MenuItem("Start at login", toggle_login, checked=lambda item: autostart.is_enabled()),

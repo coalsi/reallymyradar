@@ -104,6 +104,9 @@ class ServerSettings(BaseModel):
     port: int = 8600
     access_token: str | None = Field(None, description="if set, requests arriving through a tunnel must carry ?token= (LAN is open)")
     keep_awake: bool = Field(True, description="stop this computer idle-sleeping while the radar runs (display may still sleep)")
+    remote_enabled: bool = Field(False, description="open the ngrok tunnel whenever the app runs (set by Start/Stop remote access)")
+    ngrok_authtoken: str | None = Field(None, description="your ngrok account authtoken; if empty, an existing ngrok install's is reused")
+    ngrok_domain: str | None = Field(None, description="optional fixed address, e.g. your free your-name.ngrok-free.app domain")
 
 
 class Settings(BaseModel):

@@ -30,6 +30,7 @@ from . import render as R
 from .colormaps import palettes_for_ui
 from .config import SettingsStore
 from .manager import SITES, Manager, nearest_sites
+from .remote import Tunnel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("radar")
@@ -38,6 +39,7 @@ PRODUCTS = ["CREF", "REF", "VEL", "SW", "ZDR", "CC", "PHI"]
 
 store = SettingsStore()
 manager = Manager(store)
+tunnel = Tunnel(store)
 
 
 class LRU(OrderedDict):
@@ -73,7 +75,10 @@ async def lifespan(app: FastAPI):
     home = home_site()
     if home:
         manager.touch(home)
+    if store.settings.server.remote_enabled:  # remote access was on last time: reopen it
+        asyncio.get_running_loop().run_in_executor(None, tunnel.start)
     yield
+    await asyncio.get_running_loop().run_in_executor(None, lambda: tunnel.stop(remember=False))
     await manager.stop()
 
 
@@ -89,11 +94,19 @@ async def revalidate_app_files(request: Request, call_next):
     return resp
 
 
+def via_tunnel(request: Request) -> bool:
+    """ngrok (and any reverse proxy) marks forwarded requests; devices on the LAN connect directly."""
+    h = request.headers
+    return "x-forwarded-for" in h or "x-forwarded-proto" in h or "x-forwarded-host" in h
+
+
 @app.middleware("http")
 async def tunnel_auth(request: Request, call_next):
-    """LAN is open. Anything arriving through a tunnel (ngrok sets X-Forwarded-For) needs the token."""
+    """LAN is open. Anything arriving through a tunnel needs the radar password; with none set it's refused."""
     token = store.settings.server.access_token
-    if token and "x-forwarded-for" in request.headers:
+    if via_tunnel(request):
+        if not token:
+            return JSONResponse({"error": "remote access is off: no radar password is set"}, status_code=403)
         given = request.query_params.get("token") or request.cookies.get("rmr_token")
         if given != token:
             return JSONResponse({"error": "token required: add ?token=..."}, status_code=401)
@@ -168,18 +181,32 @@ def api_config():
             "port": store.settings.server.port, "ngrok": _ngrok_state()}
     return {"home": {"lat": d.home_lat, "lon": d.home_lon, "site": home_site()}, "products": PRODUCTS, "host": host,
             "version": store.version, "processing_version": store.processing_version,
-            "settings": store.settings.model_dump(), "palettes": palettes_for_ui(),
+            "settings": public_settings(), "palettes": palettes_for_ui(),
             "sites": [{"id": k, **v} for k, v in SITES.items()]}
+
+
+MASK = "••••••••"
+
+
+def public_settings() -> dict:
+    """Settings for the API/viewer: the ngrok authtoken is an account credential, so it never leaves the app."""
+    d = store.settings.model_dump()
+    if d["server"].get("ngrok_authtoken"):
+        d["server"]["ngrok_authtoken"] = MASK + d["server"]["ngrok_authtoken"][-4:]
+    return d
 
 
 @app.get("/api/settings")
 def get_settings():
-    return store.settings.model_dump()
+    return public_settings()
 
 
 @app.put("/api/settings")
 async def put_settings(request: Request):
     patch = await request.json()
+    srv = patch.get("server") or {}
+    if str(srv.get("ngrok_authtoken") or "").startswith(MASK):
+        srv.pop("ngrok_authtoken")  # the viewer echoed the masked value back: keep the real one
     try:
         s = store.update(patch)
     except Exception as e:
@@ -188,7 +215,7 @@ async def put_settings(request: Request):
     image_cache.reset()
     for st in manager.sites.values():
         st.next_poll = 0  # reprocess promptly if processing changed
-    return {"version": store.version, "processing_version": store.processing_version, "settings": s.model_dump()}
+    return {"version": store.version, "processing_version": store.processing_version, "settings": public_settings()}
 
 
 @app.post("/api/home")
@@ -299,6 +326,23 @@ async def point(lat: float, lon: float, wait: float = 0):
     cref = out.get("CREF", {}).get("value")
     return {"lat": lat, "lon": lon, "loading": False, "time": newest.isoformat() if newest else None,
             "precipitation": _precip(cref), "products": out}
+
+
+@app.get("/api/remote")
+def remote_status():
+    return tunnel.status()
+
+
+@app.post("/api/remote/{action}")
+async def remote_control(request: Request, action: str):
+    """Start/stop the ngrok tunnel. Only from this computer or the LAN, never through the tunnel itself."""
+    if via_tunnel(request):
+        raise HTTPException(403, "remote access can only be switched on or off from your home network")
+    if action == "start":
+        return await run_in_threadpool(tunnel.start)
+    if action == "stop":
+        return await run_in_threadpool(tunnel.stop)
+    raise HTTPException(404, "start or stop")
 
 
 @app.get("/api/site/{site}")
