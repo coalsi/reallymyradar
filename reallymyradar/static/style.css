@@ -118,3 +118,19 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   #legend { bottom: calc(222px + env(safe-area-inset-bottom)); width: calc(100vw - 150px); }
   #timeline { bottom: max(14px, env(safe-area-inset-bottom)); }
 }
+
+/* ngrok setup guide */
+.steps ol { margin: 6px 0 0; padding-left: 20px; }
+.steps li { font-size: 13px; line-height: 1.45; margin: 0 0 14px; padding-left: 2px; }
+.steps li::marker { color: var(--accent); font-family: var(--mono); }
+.steps a { color: var(--accent); }
+.steps code { font-family: var(--mono); font-size: 11.5px; }
+.steps .hint { margin: 6px 0 0; }
+.cmd { display: flex; align-items: flex-start; gap: 6px; margin-top: 7px; background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 8px; padding: 7px 7px 7px 10px; }
+.cmd code { flex: 1; word-break: break-all; white-space: pre-wrap; font-size: 11.5px; line-height: 1.45; color: #cfe8ff; user-select: all; }
+.cmd button, .tokrow button { flex: none; padding: 4px 9px; border-radius: 6px; background: rgba(77,182,255,.18); color: var(--text); font-size: 12px; }
+.cmd button:hover, .tokrow button:hover { background: rgba(77,182,255,.3); }
+.tokrow { display: flex; gap: 6px; margin-top: 7px; }
+.tokrow input { flex: 1; min-width: 0; background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; font: 12px var(--mono); }
+.okmark { color: var(--live); font-size: 12px; }
+.warnmark { color: var(--warn); }

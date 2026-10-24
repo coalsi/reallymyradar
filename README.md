@@ -98,11 +98,43 @@ The one exception is a fresh install with no home location set: it makes a singl
 rough home location from your IP address. To skip that, set `data.home_lat` / `data.home_lon` in `settings.json`
 before the first launch, or use ⚙ → Home afterwards. Your home location stays in your local settings file.
 
-## On the road
+## Away from home (ngrok)
 
-Set an access token in ⚙ → Remote access, then run `scripts/tunnel.sh` (needs [ngrok](https://ngrok.com)).
-The LAN stays open. Anything arriving through the tunnel needs `?token=` once, and a cookie remembers it. Over
-https the viewer's ◎ button uses your phone's GPS.
+The viewer's ⚙ → **Away from home** walks through this with copy buttons, and ticks off steps already done on the
+radar computer. Run everything on the computer the radar runs on.
+
+1. Make a free account at [ngrok.com](https://dashboard.ngrok.com/signup) and copy your
+   [authtoken](https://dashboard.ngrok.com/get-started/your-authtoken).
+2. Install ngrok:
+
+   macOS (Terminal, needs [Homebrew](https://brew.sh)):
+   ```bash
+   brew install ngrok
+   ```
+   Windows (PowerShell):
+   ```powershell
+   winget install ngrok -s msstore
+   ```
+   Debian / Ubuntu / Raspberry Pi OS (other distros: `snap install ngrok`):
+   ```bash
+   curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list && sudo apt update && sudo apt install ngrok
+   ```
+3. Connect it to your account:
+   ```bash
+   ngrok config add-authtoken PASTE_YOUR_AUTHTOKEN
+   ```
+4. Pick a radar password: ⚙ → Away from home → **Generate** (stored as `server.access_token`). Anything arriving through
+   the tunnel needs it, while devices on your home network don't.
+5. Start the tunnel, and leave it running:
+   ```bash
+   ngrok http 8600
+   ```
+   ngrok prints a *Forwarding* address like `https://abcd-1234.ngrok-free.app`. For the same address every time, use your
+   free domain from [dashboard.ngrok.com/domains](https://dashboard.ngrok.com/domains):
+   `ngrok http 8600 --url https://YOUR-DOMAIN`. (`scripts/tunnel.sh` does this step, and refuses to start without a password.)
+6. On your phone, open `https://YOUR-ADDRESS/?token=YOUR-PASSWORD` once. ngrok's free plan shows a one-time "Visit Site"
+   notice. After that, a cookie remembers the password for a year and the plain address works. Over https, the
+   viewer's ◎ button can use your phone's GPS.
 
 ## Headless at boot (Linux systemd)
 

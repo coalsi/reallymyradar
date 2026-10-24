@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import logging
 import time
 from collections import OrderedDict
@@ -140,10 +141,32 @@ def site_or_404(site: str) -> str:
 
 # ---------------- API ----------------
 
+def _ngrok_state() -> dict:
+    """Whether the ngrok agent is installed and logged in on *this* machine (for the setup guide)."""
+    import shutil
+    import sys
+    from pathlib import Path
+    home = Path.home()
+    cfg = {"darwin": home / "Library/Application Support/ngrok/ngrok.yml",
+           "win32": Path(os.environ.get("LOCALAPPDATA", home)) / "ngrok/ngrok.yml"}.get(
+        sys.platform, home / ".config/ngrok/ngrok.yml")
+    try:
+        logged_in = "authtoken" in cfg.read_text()
+    except OSError:
+        logged_in = False
+    # Login items get a bare PATH (no Homebrew), so also look where installers put it.
+    extra = [os.environ.get("PATH", ""), "/opt/homebrew/bin", "/usr/local/bin", "/snap/bin",
+             str(Path(os.environ.get("LOCALAPPDATA", home)) / "Microsoft/WindowsApps")]
+    return {"installed": shutil.which("ngrok", path=os.pathsep.join(extra)) is not None, "logged_in": logged_in}
+
+
 @app.get("/api/config")
 def api_config():
+    import sys
     d = store.settings.data
-    return {"home": {"lat": d.home_lat, "lon": d.home_lon, "site": home_site()}, "products": PRODUCTS,
+    host = {"os": {"darwin": "mac", "win32": "windows"}.get(sys.platform, "linux"),
+            "port": store.settings.server.port, "ngrok": _ngrok_state()}
+    return {"home": {"lat": d.home_lat, "lon": d.home_lon, "site": home_site()}, "products": PRODUCTS, "host": host,
             "version": store.version, "processing_version": store.processing_version,
             "settings": store.settings.model_dump(), "palettes": palettes_for_ui(),
             "sites": [{"id": k, **v} for k, v in SITES.items()]}

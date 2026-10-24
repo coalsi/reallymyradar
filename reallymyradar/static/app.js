@@ -465,10 +465,10 @@ const FIELDS = [
     ["image.labels", "Map labels", "check"], ["image.range_rings", "Range rings", "check"],
     ["image.show_legend", "Legend", "check"], ["image.show_home", "Home marker", "check"],
   ]],
-  ["Remote access", null, [
-    ["server.access_token", "Token required through ngrok", "text", null, "LAN stays open. Through the tunnel add ?token=… once; a cookie remembers it."],
+  ["This computer", null, [
     ["server.keep_awake", "Keep this computer awake while the radar runs", "check", null, "So kiosks and other devices never lose the radar. The display can still sleep."],
   ]],
+  ["Away from home (ngrok)", "See this radar on your phone anywhere, through a free ngrok tunnel. Devices on your home network keep working as they do now.", "remote"],
 ];
 
 function getPath(obj, path) { return path.split(".").reduce((o, k) => o?.[k], obj); }
@@ -484,6 +484,7 @@ function buildSettings() {
   for (const [title, hint, rows] of FIELDS) {
     f.insertAdjacentHTML("beforeend", `<h3>${title}</h3>${hint ? `<p class="hint">${hint}</p>` : ""}`);
     if (rows === "style") { buildStyleRows(f); continue; }
+    if (rows === "remote") { buildRemoteAccess(f); continue; }
     for (const [path, label, kind, opts, help] of rows) f.appendChild(row(path, label, kind, opts, getPath(s, path), help));
   }
   f.insertAdjacentHTML("beforeend", `<h3>Home</h3><div class="btnrow"><button id="setHomeHere">Set home = map center</button><button id="setHomeMe">Set home = my GPS</button></div>`);
@@ -517,6 +518,96 @@ function buildStyleRows(f) {
   f.appendChild(row(pre + "vmin", "Color scale from", "range", [lo, hi, step], st.vmin));
   f.appendChild(row(pre + "vmax", "Color scale to", "range", [lo, hi, step], st.vmax));
   f.appendChild(row(pre + "opacity", "Opacity", "range", [0.1, 1, 0.01], st.opacity));
+}
+
+// ---------- ngrok setup guide ----------
+const NGROK_INSTALL = {
+  mac: { name: "Mac", cmd: "brew install ngrok", where: "Run in Terminal. Needs Homebrew (brew.sh)." },
+  windows: { name: "Windows", cmd: "winget install ngrok -s msstore", where: "Run in PowerShell or Command Prompt." },
+  linux: {
+    name: "Linux / Pi",
+    cmd: 'curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list && sudo apt update && sudo apt install ngrok',
+    where: "Debian, Ubuntu and Raspberry Pi OS. Other distros: snap install ngrok",
+  },
+};
+
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch { // plain-http LAN pages have no clipboard API; fall back to a hidden textarea
+    const ta = Object.assign(document.createElement("textarea"), { value: text });
+    ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+  }
+  btn.textContent = "Copied ✓"; setTimeout(() => (btn.textContent = "Copy"), 1500);
+}
+function cmdBlock(text) {
+  const d = document.createElement("div");
+  d.className = "cmd";
+  d.innerHTML = `<code></code><button>Copy</button>`;
+  d.querySelector("code").textContent = text;
+  d.querySelector("button").onclick = (e) => copyText(text, e.currentTarget);
+  return d;
+}
+function newToken() {
+  const abc = "abcdefghjkmnpqrstuvwxyz23456789", r = crypto.getRandomValues(new Uint8Array(20));
+  return Array.from(r, (b) => abc[b % abc.length]).join("");
+}
+
+function buildRemoteAccess(f) {
+  const host = S.cfg.host || { os: "mac", port: 8600, ngrok: {} };
+  S.ngrokOs = S.ngrokOs || host.os;
+  const ng = host.ngrok || {};
+  const sameOs = S.ngrokOs === host.os;
+  const done = (yes) => (yes && sameOs ? ' <span class="okmark">✓ done on this computer</span>' : "");
+  const box = document.createElement("div");
+  box.className = "steps";
+  box.innerHTML = `
+    <p class="hint">Run these on the computer the radar runs on${host.os ? ` (it's on <b>${NGROK_INSTALL[host.os].name}</b>)` : ""}.</p>
+    <div class="ostabs prodtabs">${Object.entries(NGROK_INSTALL).map(([k, v]) => `<button data-os="${k}" class="${k === S.ngrokOs ? "on" : ""}">${v.name}</button>`).join("")}</div>
+    <ol>
+      <li><b>Make a free ngrok account</b>, then open your authtoken page and copy the token.
+        <a href="https://dashboard.ngrok.com/signup" target="_blank">Sign up</a> ·
+        <a href="https://dashboard.ngrok.com/get-started/your-authtoken" target="_blank">Your authtoken</a>${done(ng.logged_in)}</li>
+      <li><b>Install ngrok</b>${done(ng.installed)}<div id="ngInstall"></div><p class="hint">${NGROK_INSTALL[S.ngrokOs].where}</p></li>
+      <li><b>Connect it to your account</b>: paste your authtoken in place of the capitals.${done(ng.logged_in)}<div id="ngAuth"></div></li>
+      <li><b>Pick a radar password.</b> Anyone reaching the radar through ngrok needs it.
+        <div class="tokrow"><input id="ngTok" type="text" placeholder="not set" spellcheck="false"><button id="ngGen">Generate</button></div>
+        <p class="hint" id="ngTokState"></p></li>
+      <li><b>Start the tunnel</b> and leave that window open.<div id="ngRun"></div>
+        <p class="hint">ngrok shows a <i>Forwarding</i> line like <code>https://abcd-1234.ngrok-free.app</code>. That's your radar's address.
+        For the same address every time, add your free domain from <a href="https://dashboard.ngrok.com/domains" target="_blank">dashboard.ngrok.com/domains</a>:
+        <code>ngrok http ${host.port} --url https://YOUR-DOMAIN</code></p></li>
+      <li><b>Open it on your phone.</b> Paste the Forwarding address:
+        <div class="tokrow"><input id="ngUrl" type="text" placeholder="https://….ngrok-free.app" spellcheck="false"></div>
+        <div id="ngLink"></div>
+        <p class="hint">Open that link once. ngrok's free plan shows a one-time “Visit Site” notice, then the radar loads and remembers your password for a year.
+        After that, the plain address works. Bookmark it or add it to your home screen.</p></li>
+    </ol>`;
+  f.appendChild(box);
+  box.querySelectorAll(".ostabs button").forEach((b) => (b.onclick = () => { S.ngrokOs = b.dataset.os; buildSettings(); }));
+  box.querySelector("#ngInstall").appendChild(cmdBlock(NGROK_INSTALL[S.ngrokOs].cmd));
+  box.querySelector("#ngAuth").appendChild(cmdBlock("ngrok config add-authtoken PASTE_YOUR_AUTHTOKEN"));
+  box.querySelector("#ngRun").appendChild(cmdBlock(`ngrok http ${host.port}`));
+
+  const tok = box.querySelector("#ngTok"), url = box.querySelector("#ngUrl");
+  tok.value = S.cfg.settings.server.access_token || "";
+  try { url.value = localStorage.getItem("rmr_ngrok_url") || ""; } catch {}
+  const refresh = () => {
+    const t = tok.value.trim();
+    box.querySelector("#ngTokState").innerHTML = t
+      ? '<span class="okmark">✓ Set.</span> Required through ngrok; your home network doesn\'t need it.'
+      : '<span class="warnmark">Not set.</span> Set one before starting ngrok, or anyone with the address could use your radar.';
+    const link = box.querySelector("#ngLink");
+    link.innerHTML = "";
+    let u = url.value.trim().replace(/\/+$/, "");
+    if (u && !/^https?:\/\//.test(u)) u = "https://" + u;
+    if (u && t) link.appendChild(cmdBlock(`${u}/?token=${encodeURIComponent(t)}`));
+  };
+  const saveTok = () => { send("server.access_token", tok.value.trim() || null, true); refresh(); };
+  tok.onchange = saveTok;
+  box.querySelector("#ngGen").onclick = () => { tok.value = newToken(); saveTok(); };
+  url.oninput = () => { try { localStorage.setItem("rmr_ngrok_url", url.value.trim()); } catch {} refresh(); };
+  refresh();
 }
 
 function row(path, label, kind, opts, value, help, nullable) {
