@@ -43,3 +43,22 @@ targets:
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         CODE_SIGN_STYLE: Automatic
         ENABLE_USER_SCRIPT_SANDBOXING: YES
+    scheme:
+      testTargets: [ReallymyRadarTVUITests]
+
+  # Siri Remote tests: drive the app with remote presses against a running server.
+  #   xcodebuild test -project ReallymyRadarTV.xcodeproj -scheme ReallymyRadarTV -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation)'
+  # The simulator reaches the server on this Mac at 127.0.0.1:8600 (TEST_RUNNER_RMR_SERVER overrides it).
+  ReallymyRadarTVUITests:
+    type: bundle.ui-testing
+    platform: tvOS
+    sources: [UITests]
+    dependencies:
+      - target: ReallymyRadarTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.reallymyradar.tv.uitests.$(DEVELOPMENT_TEAM)
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        TEST_TARGET_NAME: ReallymyRadarTV

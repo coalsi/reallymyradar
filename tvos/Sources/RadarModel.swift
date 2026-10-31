@@ -149,6 +149,7 @@ final class RadarModel {
     func refreshFrames() async {
         guard let api else { return }
         let b = bounds ?? (24, -125, 50, -66)
+        let viewChanged = lastFetchBounds.map { $0 != b } ?? true
         let product = self.product
         do {
             let newFrames: [Frame]
@@ -176,21 +177,30 @@ final class RadarModel {
             }
             guard product == self.product else { return }  // switched while loading
             lastFetchBounds = b
-            apply(frames: Array(newFrames.suffix(Self.maxFrames)), source: newSource)
+            apply(frames: Array(newFrames.suffix(Self.maxFrames)), source: newSource, viewChanged: viewChanged)
         } catch {
+            // Moving the map again cancels the request for the old view. That's not a lost server.
+            if Task.isCancelled { return }
             sourceLabel = "Can't reach the radar server"
         }
     }
 
-    private func apply(frames newFrames: [Frame], source newSource: String) {
+    private func apply(frames newFrames: [Frame], source newSource: String, viewChanged: Bool) {
+        guard let api else { return }
         let followLatest = playing || frameIndex >= frames.count - 1
         let previousID = frames.indices.contains(frameIndex) ? frames[frameIndex].id : nil
+        // A mosaic frame's rev fingerprints the radars in view, so moving the map changes every rev
+        // without changing a single picture (each tile comes from its closest radar). Keep those
+        // frames and their downloaded tiles; a new rev for the same view means new radar data.
+        let lastRev = Dictionary(frames.map { ($0.id, $0.rev) }, uniquingKeysWith: { a, _ in a })
+        let kept = Dictionary(zip(frames.map(\.id), layers), uniquingKeysWith: { a, _ in a })
+        layers = newFrames.map { f in
+            if newSource == source, let layer = kept[f.id], viewChanged || lastRev[f.id] == f.rev { return layer }
+            return RadarLayer(id: "\(newSource)/\(product)/\(f.id)/\(f.rev)",
+                              urlTemplate: api.tileTemplate(source: newSource, product: product, frame: f))
+        }
         frames = newFrames
         source = newSource
-        guard let api else { return }
-        layers = newFrames.map {
-            RadarLayer(id: "\(newSource)/\(product)/\($0.rev)", urlTemplate: api.tileTemplate(source: newSource, product: product, frame: $0))
-        }
         frameTimes = newFrames.map { Self.parseTime($0.time) ?? .now }
         if followLatest || previousID == nil {
             frameIndex = max(0, newFrames.count - 1)

@@ -17,6 +17,9 @@ struct RadarMapView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
+        // MapKit on tvOS makes the map focusable: the first arrow press moved focus onto it, then every
+        // swipe panned it and focus never came back to the controls. It only moves on command here.
+        map.isUserInteractionEnabled = false
         map.delegate = context.coordinator
         map.overrideUserInterfaceStyle = .dark
         map.pointOfInterestFilter = .excludingAll
@@ -63,7 +66,7 @@ struct RadarMapView: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate {
         var onRegionChange: ((Double, Double, Double, Double) -> Void)?
         var lastCameraID = 0
-        private var overlays: [String: MKTileOverlay] = [:]
+        private var overlays: [String: QueuedTileOverlay] = [:]
         private var renderers: [String: FrameRenderer] = [:]
         private var look: MapLook?
         private var homeAnnotation: MKPointAnnotation?
@@ -87,7 +90,7 @@ struct RadarMapView: UIViewRepresentable {
             self.opacity = opacity
             let wanted = Set(layers.map(\.id))
             for layer in layers where overlays[layer.id] == nil {
-                let overlay = CachedTileOverlay(urlTemplate: layer.urlTemplate)
+                let overlay = QueuedTileOverlay(urlTemplate: layer.urlTemplate)
                 overlay.tileSize = CGSize(width: 512, height: 512)
                 overlay.canReplaceMapContent = false
                 overlay.minimumZ = 3
@@ -98,10 +101,12 @@ struct RadarMapView: UIViewRepresentable {
             }
             for (id, overlay) in overlays where !wanted.contains(id) {
                 map.removeOverlay(overlay)
+                TileLoader.shared.cancel(for: overlay)
                 overlays[id] = nil
                 renderers[id] = nil
             }
             visibleID = current
+            for (id, overlay) in overlays { overlay.onScreen = id == current }
             for (id, renderer) in renderers where renderer.shown != (id == current) {
                 renderer.shown = id == current
                 renderer.setNeedsDisplay()
@@ -192,27 +197,102 @@ nonisolated final class FrameRenderer: MKTileOverlayRenderer {
     }
 }
 
-/// Tile overlay with a shared in-memory cache. MapKit's own tile cache is small and the animation
-/// cycles through every frame, so without this the same tiles are downloaded over and over.
-nonisolated final class CachedTileOverlay: MKTileOverlay {
-    // NSCache is documented as thread-safe; MapKit calls loadTile from its own threads.
-    nonisolated(unsafe) private static let cache: NSCache<NSURL, NSData> = {
+/// One animation frame's tiles, fetched through `TileLoader` so the frame on screen comes first.
+nonisolated final class QueuedTileOverlay: MKTileOverlay, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _onScreen = false
+
+    /// Set on the main thread; read by the loader's threads.
+    var onScreen: Bool {
+        get { lock.withLock { _onScreen } }
+        set { lock.withLock { _onScreen = newValue } }
+    }
+
+    override func loadTile(at path: MKTileOverlayPath, result: @escaping @Sendable (Data?, (any Error)?) -> Void) {
+        TileLoader.shared.load(url(forTilePath: path), zoom: path.z, for: self, result: result)
+    }
+}
+
+/// Downloads radar tiles a few at a time, most useful first. MapKit asks for every frame's tiles
+/// at once (hundreds after a zoom) and can't cancel them, so a plain URLSession queue served them
+/// in order: the picture on screen filled in last, and slow to appear. Here the current zoom level
+/// beats leftovers from the last one, the frame on screen beats the others, and newer beats older.
+/// Downloads are kept in memory: the animation cycles every frame, so they're asked for again and again.
+nonisolated final class TileLoader: @unchecked Sendable {
+    static let shared = TileLoader()
+
+    private struct Job: Sendable {
+        let url: URL
+        let zoom: Int
+        let order: Int
+        let overlay: QueuedTileOverlay
+        let result: @Sendable (Data?, (any Error)?) -> Void
+    }
+
+    private let lock = NSLock()
+    private var waiting: [Job] = []
+    private var running = 0
+    private var counter = 0
+    private var latestZoom = 0
+    private let maxRunning = 6
+    private let cache: NSCache<NSURL, NSData> = {
         let c = NSCache<NSURL, NSData>()
         c.totalCostLimit = 120 * 1024 * 1024
         return c
     }()
+    private let session: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.httpMaximumConnectionsPerHost = 6
+        c.timeoutIntervalForRequest = 30
+        return URLSession(configuration: c)
+    }()
 
-    override func loadTile(at path: MKTileOverlayPath, result: @escaping @Sendable (Data?, (any Error)?) -> Void) {
-        let url = self.url(forTilePath: path)
-        if let hit = Self.cache.object(forKey: url as NSURL) {
+    func load(_ url: URL, zoom: Int, for overlay: QueuedTileOverlay,
+              result: @escaping @Sendable (Data?, (any Error)?) -> Void) {
+        if let hit = cache.object(forKey: url as NSURL) {
             result(hit as Data, nil)
             return
         }
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            if let data, (response as? HTTPURLResponse)?.statusCode == 200 {
-                Self.cache.setObject(data as NSData, forKey: url as NSURL, cost: data.count)
-            }
-            result(data, error)
-        }.resume()
+        lock.withLock {
+            counter += 1
+            latestZoom = zoom
+            waiting.append(Job(url: url, zoom: zoom, order: counter, overlay: overlay, result: result))
+        }
+        startJobs()
+    }
+
+    /// The overlay left the map: its waiting tiles will never be drawn.
+    func cancel(for overlay: QueuedTileOverlay) {
+        let dropped = lock.withLock {
+            let mine = waiting.filter { $0.overlay === overlay }
+            waiting.removeAll { $0.overlay === overlay }
+            return mine
+        }
+        for job in dropped { job.result(nil, URLError(.cancelled)) }
+    }
+
+    private func startJobs() {
+        while let job = nextJob() {
+            session.dataTask(with: job.url) { [self] data, response, error in
+                if let data, (response as? HTTPURLResponse)?.statusCode == 200 {
+                    cache.setObject(data as NSData, forKey: job.url as NSURL, cost: data.count)
+                    job.result(data, nil)
+                } else {
+                    job.result(nil, error ?? URLError(.badServerResponse))
+                }
+                lock.withLock { running -= 1 }
+                startJobs()
+            }.resume()
+        }
+    }
+
+    private func nextJob() -> Job? {
+        lock.withLock { () -> Job? in
+            guard running < maxRunning, !waiting.isEmpty else { return nil }
+            func rank(_ j: Job) -> (Int, Int, Int) { (j.zoom == latestZoom ? 1 : 0, j.overlay.onScreen ? 1 : 0, j.order) }
+            let best = waiting.indices.max { rank(waiting[$0]) < rank(waiting[$1]) }!
+            running += 1
+            return waiting.remove(at: best)
+        }
     }
 }

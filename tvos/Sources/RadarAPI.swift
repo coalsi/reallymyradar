@@ -10,13 +10,22 @@ struct RadarAPI {
         return d
     }()
 
+    /// API calls get their own connections. Sharing them with the map's tile downloads, a call made
+    /// right after a zoom waited behind hundreds of tiles and timed out ("can't reach the server").
+    private static let session: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.httpMaximumConnectionsPerHost = 2
+        c.timeoutIntervalForRequest = 20
+        return URLSession(configuration: c)
+    }()
+
     func get<T: Decodable>(_ path: String, _ query: [String: String] = [:], as type: T.Type = T.self) async throws -> T {
         var comps = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
             comps.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
         let request = URLRequest(url: comps.url!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }

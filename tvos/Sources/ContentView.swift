@@ -49,6 +49,7 @@ struct RadarScreen: View {
                             focus = .map
                         }
                     }
+                    .focusSection()  // spans the screen, so Up from anywhere on the bar reaches the tools
                     Spacer()
                     if let legend = model.legend { LegendView(legend: legend) }
                     ProductBar(model: model, focus: $focus)
@@ -113,6 +114,7 @@ struct InfoPanel: View {
             Text(model.sourceLabel)
                 .font(.callout)
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("source")
             HStack(alignment: .firstTextBaseline, spacing: 14) {
                 Text(model.timeText)
                     .font(.system(size: 44, weight: .semibold, design: .rounded))
@@ -184,12 +186,16 @@ struct ProductBar: View {
                     .frame(width: 40)
             }
             .focused(focus, equals: .play)
+            .accessibilityIdentifier("play")
 
             ForEach(model.products, id: \.self) { code in
                 ProductButton(code: code, selected: code == model.product) { model.select(product: code) }
             }
         }
         .font(.callout.weight(.semibold))
+        // Full width, so Down from the map tools (top-right) lands here.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .focusSection()
     }
 }
 
@@ -201,10 +207,16 @@ struct MapTools: View {
     var body: some View {
         HStack(spacing: 14) {
             Button(action: startMoving) { Image(systemName: "arrow.up.and.down.and.arrow.left.and.right") }
+                .accessibilityLabel("Move map")
+                .accessibilityIdentifier("tool.move")
             Button { model.zoom(in: false) } label: { Image(systemName: "minus.magnifyingglass") }
+                .accessibilityIdentifier("tool.zoomOut")
             Button { model.zoom(in: true) } label: { Image(systemName: "plus.magnifyingglass") }
+                .accessibilityIdentifier("tool.zoomIn")
             Button { model.goHome() } label: { Image(systemName: "house.fill") }
+                .accessibilityIdentifier("tool.home")
             Button { model.cycleLook() } label: { Image(systemName: "map") }
+                .accessibilityIdentifier("tool.look")
         }
         .font(.callout.weight(.semibold))
     }
@@ -228,6 +240,7 @@ struct ProductButton: View {
                         .offset(y: 12)
                 }
         }
+        .accessibilityIdentifier("product.\(code)")
     }
 }
 
@@ -244,6 +257,7 @@ struct MoveMapLayer: View {
                 .contentShape(Rectangle())
                 .focusable()
                 .focused(focus, equals: .map)
+                .accessibilityIdentifier("moveMap")
                 .onMoveCommand { model.pan($0) }
                 .onTapGesture { model.zoom(in: true) }
                 .onLongPressGesture(minimumDuration: 0.6) { model.zoom(in: false) }
