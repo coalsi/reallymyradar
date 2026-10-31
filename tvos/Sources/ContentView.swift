@@ -70,7 +70,11 @@ struct RadarScreen: View {
         }
         .onPlayPauseCommand { model.togglePlay() }
         .onExitCommand(perform: exitAction)
-        .onAppear { focus = .play }
+        .onAppear {
+            focus = .play
+            UIApplication.shared.isIdleTimerDisabled = true  // a radar wall display shouldn't fall to the screensaver
+        }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
         .animation(.easeInOut(duration: 0.25), value: chrome)
         .animation(.easeInOut(duration: 0.25), value: moving)
     }
