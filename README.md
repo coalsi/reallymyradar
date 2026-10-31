@@ -84,6 +84,30 @@ While it runs, the app keeps the computer from idle-sleeping so kiosks and other
 
 Headless installs report the same thing at `GET /api/status`. The Docker image has a built-in health check.
 
+## Apple TV app
+
+`tvos/` is a native tvOS app: Apple Maps with the live radar mosaic on top, animated, for any Apple TV on your network.
+It finds the radar server by itself (Bonjour), so there's nothing to type.
+
+**Siri Remote:**
+- **Play/Pause:** start or stop the loop.
+- **Bottom row:** switch products: Composite, Reflectivity, Velocity, Width, ZDR, CC, Phase. Velocity and the other
+  per-radar products use the radar nearest the middle of the map.
+- **Top right:** move the map, zoom out or in, home, and map style (dark, hybrid, satellite).
+- **Move map:** arrows or swipes pan, click zooms in, click and hold zooms out, Back finishes.
+- **Back:** hides the controls for a clean wall display. Any press brings them back, and Back again exits.
+
+**Build and install** (needs Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen), and an Apple Developer account;
+pair the Apple TV in Xcode → Window → Devices and Simulators first):
+
+```bash
+cd tvos
+echo "DEVELOPMENT_TEAM = YOURTEAMID" > Local.xcconfig     # git-ignored
+xcodegen generate && open ReallymyRadarTV.xcodeproj       # then Run on your Apple TV
+```
+
+To always open on one area, launch with `-startLat 35.2 -startLon -97.4 -startSpan 4` (span in degrees of latitude).
+
 ## For other apps: the API
 
 Interactive docs live on every install at **`/docs`**. The main endpoints:
@@ -189,6 +213,7 @@ reallymyradar/
   server.py     FastAPI: API, tiles, images, pages
   manager.py    on-demand radar polling, frame store, reprocessing
   remote.py     built-in ngrok tunnel for remote access         keepawake.py  stop idle sleep while running
+  bonjour.py    announces the server on the network (_reallymyradar._tcp)   netinfo.py  picks the real LAN address
   fetch.py      S3 listing/downloads (archive + live chunks)
   decode.py     Level II -> cleaned uniform polar sweeps per product (worker processes)
   mosaic.py     radar selection, time slots, closest-radar blending
@@ -197,6 +222,7 @@ reallymyradar/
   colormaps.py  palettes          config.py  settings model          icon.py  app icon
   static/       viewer, kiosk page
 packaging/      PyInstaller spec      scripts/  ngrok tunnel
+tvos/           Apple TV app (SwiftUI + MapKit); project.yml for XcodeGen, make_assets.py for the icons
 ```
 
 Basemap © Esri. Radar data: NOAA NEXRAD Level II via NOAA Open Data Dissemination / Unidata.

@@ -1,0 +1,4 @@
+// Your Apple developer team goes in Local.xcconfig (git-ignored), e.g.
+//   DEVELOPMENT_TEAM = ABCDE12345
+// The bundle ID includes the team ID so every developer gets a unique one.
+#include? "Local.xcconfig"

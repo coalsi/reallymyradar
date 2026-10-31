@@ -16,6 +16,7 @@ dependencies = [
     "scipy>=1.18.1",
     "segno>=1.6.6",
     "uvicorn[standard]>=0.54.0",
+    "zeroconf>=0.152.0",
 ]
 
 [project.scripts]

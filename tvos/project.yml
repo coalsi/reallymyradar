@@ -1,0 +1,45 @@
+# Generate the Xcode project:  cd tvos && xcodegen
+name: ReallymyRadarTV
+options:
+  deploymentTarget:
+    tvOS: "26.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+targets:
+  ReallymyRadarTV:
+    type: application
+    platform: tvOS
+    sources:
+      - Sources
+      - path: Resources/Assets.xcassets
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: ReallymyRadar
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSRequiresIPhoneOS: true
+        UIRequiredDeviceCapabilities: [arm64]
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Dark
+        NSLocalNetworkUsageDescription: ReallymyRadar finds the radar server running on a computer on your network.
+        NSBonjourServices: [_reallymyradar._tcp]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoads: true   # the radar server is plain http on your LAN (or https through ngrok)
+    settings:
+      base:
+        PRODUCT_NAME: ReallymyRadar
+        PRODUCT_BUNDLE_IDENTIFIER: com.reallymyradar.tv.$(DEVELOPMENT_TEAM)
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "3"
+        ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon & Top Shelf Image"
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SWIFT_VERSION: "6.0"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_USER_SCRIPT_SANDBOXING: YES

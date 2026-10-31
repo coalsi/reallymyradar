@@ -14,7 +14,6 @@ import json
 import logging
 import multiprocessing
 import os
-import socket
 import subprocess
 import sys
 import threading
@@ -27,12 +26,8 @@ log = logging.getLogger("radar")
 
 
 def lan_ip() -> str:
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("10.255.255.255", 1))  # no packet is sent; this just picks the LAN interface
-            return s.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
+    from .netinfo import lan_ip as _lan_ip
+    return _lan_ip()
 
 
 def already_running(port: int) -> bool:

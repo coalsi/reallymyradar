@@ -78,7 +78,11 @@ async def lifespan(app: FastAPI):
         manager.touch(home)
     if store.settings.server.remote_enabled:  # remote access was on last time: reopen it
         asyncio.get_running_loop().run_in_executor(None, tunnel.start)
+    from .bonjour import Announcer
+    announcer = Announcer(serving_port(store.settings))
+    await announcer.start()
     yield
+    await announcer.stop()
     await asyncio.get_running_loop().run_in_executor(None, lambda: tunnel.stop(remember=False))
     await manager.stop()
 
@@ -158,13 +162,8 @@ def site_or_404(site: str) -> str:
 # ---------------- API ----------------
 
 def _lan_ip() -> str:
-    import socket
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("10.255.255.255", 1))  # no packet is sent; this just picks the LAN interface
-            return s.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
+    from .netinfo import lan_ip
+    return lan_ip()
 
 
 def _ngrok_state() -> dict:
